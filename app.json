@@ -19,7 +19,11 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "compileSdkVersion": 33,
+      "targetSdkVersion": 33,
+      "minSdkVersion": 21,
+      "package": "com.transco"
     },
     "web": {
       "bundler": "metro",
@@ -31,6 +35,14 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "cfec54a0-92b8-4ae0-b925-a2a58286c431"
+      }
     }
   }
 }
