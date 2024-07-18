@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import debounce from "lodash/debounce";
 import { Picker } from "@react-native-picker/picker";
 import {
   ScrollView,
@@ -18,27 +19,21 @@ type Language = {
   value: string;
 };
 
-const languages: Language[] = [
-  {
-    label: "English",
-    value: "en",
-  },
-  {
-    label: "Kana",
-    value: "ka",
-  },
-  {
-    label: "Gokana",
-    value: "goka",
-  },
-];
+type TLanguageResponse = {
+  id: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 const TranslatorScreen = () => {
   const [text, setText] = useState("");
   const [translatedText, setTranslatedText] = useState("");
-  const [languageFrom, setLanguageFrom] = useState<Language>(languages[0]);
-  const initialLanguageTo = languages.slice().reverse()[0];
-  const [languageTo, setLanguageTo] = useState<Language>(initialLanguageTo);
+  const [languages, setLanguages] = useState<Language[]>([]);
+  const [languageFrom, setLanguageFrom] = useState<Language | undefined>(
+    undefined
+  );
+  const [languageTo, setLanguageTo] = useState<Language | undefined>(undefined);
 
   const handleLanguageFromChange = (value: string) => {
     const selectedLanguage = languages.find(
@@ -55,6 +50,7 @@ const TranslatorScreen = () => {
   };
 
   const swapLanguages = () => {
+    if (!languageFrom || !languageTo) return;
     const tempLanguage = languageFrom;
     setLanguageFrom(languageTo);
     setLanguageTo(tempLanguage);
@@ -64,11 +60,27 @@ const TranslatorScreen = () => {
     setTranslatedText(tempText);
   };
 
-  const handleTranslation = (text: string) => {
-    // Implement translation logic here
-    // For now, just return the text as is
+  const handleTranslation = async (text: string) => {
     setText(text);
-    setTranslatedText(text);
+    // get the selected languageFrom and Language to translate to
+    const languageToTranslateFrom: string = languageFrom?.value || "";
+    const languageToTranslateTo: string = languageTo?.value || "";
+    if (!languageFrom || !languageTo) return;
+
+    // call the translate function
+    const debounceTranslate = debounce(async () => {
+      const translated = await translate(
+        text,
+        languageToTranslateFrom,
+        languageToTranslateTo
+      );
+      if (translated) {
+        console.log("Translated text:", translated);
+        setTranslatedText(translated.word);
+      }
+    }, 300);
+
+    debounceTranslate();
   };
 
   const copyToClipboard = async (text: string) => {
@@ -81,15 +93,61 @@ const TranslatorScreen = () => {
 
   const playAudio = (text: string) => {
     Speech.speak(text, {
-      language: languageTo.value,
+      language: languageTo?.value,
     });
   };
+
+  const getLanguages = async (): Promise<Language[]> => {
+    try {
+      const response = await fetch("http://192.168.1.147:3000/api/languages");
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      const data = await response.json();
+      return data.data.map((language: TLanguageResponse) => ({
+        label: language.name,
+        value: language.id,
+      }));
+    } catch (error) {
+      console.error("Error fetching languages:", error);
+      return [];
+    }
+  };
+
+  const translate = async (text: string, from: string, to: string) => {
+    // call the translate function
+    console.log("Translating from", from, "to", to, "text", text);
+    const response = await fetch(`http://192.168.1.147:3000/api/translate/`, {
+      method: "POST",
+      body: JSON.stringify({ word: text, from, to }),
+    });
+    const data = await response.json();
+    // if (data.status === "success") {
+    //   console.log("Translated data:", data);
+    //   return data.data;
+    // }
+
+    return data?.data[0];
+  };
+
+  useEffect(() => {
+    const fetchLanguages = async () => {
+      const languages = await getLanguages();
+      setLanguages(languages);
+      if (languages.length > 0) {
+        setLanguageFrom(languages[0]);
+        setLanguageTo(languages[languages.length - 1]);
+      }
+    };
+
+    fetchLanguages();
+  }, []);
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.languageSelector}>
         <Picker
-          selectedValue={languageFrom.value}
+          selectedValue={languageFrom?.value}
           onValueChange={(itemValue) => handleLanguageFromChange(itemValue)}
           style={styles.picker}
         >
@@ -98,6 +156,9 @@ const TranslatorScreen = () => {
               key={language.value}
               label={language.label}
               value={language.value}
+              style={{
+                textTransform: "capitalize",
+              }}
             />
           ))}
         </Picker>
@@ -105,7 +166,7 @@ const TranslatorScreen = () => {
           <Text style={styles.swapButton}>⇄</Text>
         </TouchableOpacity>
         <Picker
-          selectedValue={languageTo.value}
+          selectedValue={languageTo?.value}
           onValueChange={(itemValue) => handleLanguageToChange(itemValue)}
           style={styles.picker}
         >
@@ -124,7 +185,7 @@ const TranslatorScreen = () => {
       <View style={styles.translationContainer}>
         <View style={styles.textInputHeader}>
           <Text style={styles.label}>Translate From</Text>
-          <Text style={styles.label}>{languageFrom.label}</Text>
+          <Text style={styles.label}>{languageFrom?.label}</Text>
         </View>
         <View style={styles.inputContainer}>
           <TextInput
@@ -132,6 +193,7 @@ const TranslatorScreen = () => {
             multiline
             value={text}
             onChangeText={handleTranslation}
+            selectionColor="#ffffff"
           />
           <View style={styles.iconContainer}>
             <TouchableOpacity onPress={() => playAudio(text)}>
@@ -158,7 +220,7 @@ const TranslatorScreen = () => {
         </View>
         <View style={styles.textInputHeader}>
           <Text style={styles.label}>Translate To</Text>
-          <Text style={styles.label}>{languageTo.label}</Text>
+          <Text style={styles.label}>{languageTo?.label}</Text>
         </View>
         <View style={styles.inputContainer}>
           <TextInput
@@ -196,6 +258,7 @@ const styles = StyleSheet.create({
   picker: {
     flex: 1,
     height: 50,
+    textTransform: "capitalize",
   },
   swapButton: {
     fontSize: 24,
